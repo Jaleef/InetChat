@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <cstring>
+
 #include <iostream>
 #include <string>
 #include <thread>
@@ -26,8 +27,9 @@ class Client {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(kPort);
 
+    // 该函数将点分十进制的IP地址转换为网络字节序的二进制地址
+    // 将转换的二进制地址存在sin_addr中
     if (inet_pton(AF_INET, kServerIp, &serv_addr.sin_addr) <= 0) {
-      std::cerr << "Invalid address / Address not supported" << std::endl;
       throw std::runtime_error("Invalid address / Address not supported");
     }
 
@@ -51,7 +53,6 @@ class Client {
   void SendThread() {
     while (true) {
       std::string message{};
-      // std::cout << "self: ";
       std::getline(std::cin, message);
 
       if (send(sock, message.c_str(), message.size(), 0) < 0) {
