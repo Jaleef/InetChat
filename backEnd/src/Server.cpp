@@ -91,9 +91,9 @@ void SetNonBlocking(int fd) {
 int main(int argc, char* argv[]) {
   int server_fd = CreateServerSocket();
   // epoll_create()创建epoll系统调用
-  int epoll_fd = epoll_create(0);
+  int epoll_fd = epoll_create(1);
   if (epoll_fd == -1) {
-    std::cerr << "Epoll createion failed" << strerror(errno) << std::endl;
+    std::cerr << "Epoll createion failed " << strerror(errno) << std::endl;
     close(server_fd);
     exit(EXIT_FAILURE);
   }
