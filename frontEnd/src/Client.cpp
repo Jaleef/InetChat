@@ -9,80 +9,92 @@
 
 constexpr int kBufferSize = 1024;
 constexpr int kPort = 8080;
+constexpr char* kServerIp = "127.0.0.1";
 
-int sock{};
+class Client {
+ public:
+  Client() = default;
+  ~Client() { close(sock); }
 
-// 发送消息的线程函数
-void SendThread() {
-  while (true) {
-    std::string message{};
-    // std::cout << "self: ";
-    std::getline(std::cin, message);
-
-    if (send(sock, message.c_str(), message.size(), 0) < 0) {
-      std::cerr << "Send failed: " << strerror(errno) << std::endl;
-      break;
+  void connectServer() {
+    struct sockaddr_in serv_addr;
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+      throw std::runtime_error("Socket creation error");
     }
-  }
-}
 
-// 接收消息的线程函数
-void RecvThread() {
-  char buffer[kBufferSize]{};
-  while (true) {
-    ssize_t valread = recv(sock, buffer, kBufferSize - 1, 0);
-    if (valread <= 0) {
-      if (valread == 0) {
-        std::cout << "Server closed the connection." << std::endl;
-      } else {
-        std::cerr << "Recv failed: " << strerror(errno) << std::endl;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(kPort);
+
+    if (inet_pton(AF_INET, kServerIp, &serv_addr.sin_addr) <= 0) {
+      std::cerr << "Invalid address / Address not supported" << std::endl;
+      throw std::runtime_error("Invalid address / Address not supported");
+    }
+
+    if (connect(sock, reinterpret_cast<struct sockaddr*>(&serv_addr),
+                sizeof(serv_addr)) < 0) {
+      throw std::runtime_error("Connection failed");
+    }
+
+    std::cout << "Connected to server" << std::endl;
+  }
+
+  void loop() {
+    std::thread send_thread(&Client::SendThread, this);
+    std::thread recv_thread(&Client::RecvThread, this);
+
+    send_thread.join();
+    recv_thread.join();
+  }
+
+  // 发送消息的线程函数
+  void SendThread() {
+    while (true) {
+      std::string message{};
+      // std::cout << "self: ";
+      std::getline(std::cin, message);
+
+      if (send(sock, message.c_str(), message.size(), 0) < 0) {
+        std::cerr << "Send failed: " << strerror(errno) << std::endl;
       }
-      break;
     }
-    buffer[valread] = '\0';
-
-    uint32_t network_number;
-    memcpy(&network_number, buffer, 4);
-    int client_fd = ntohl(network_number);
-
-    std::cout << "user " << client_fd << ": " << buffer + 4 << std::endl;
   }
-}
+
+  // 接收消息的线程函数
+  void RecvThread() {
+    char buffer[kBufferSize]{};
+    while (true) {
+      ssize_t valread = recv(sock, buffer, kBufferSize - 1, 0);
+      if (valread <= 0) {
+        if (valread == 0) {
+          std::cout << "Server closed the connection." << std::endl;
+        } else {
+          std::cerr << "Recv failed: " << strerror(errno) << std::endl;
+        }
+        break;
+      }
+      buffer[valread] = '\0';
+
+      uint32_t network_number;
+      memcpy(&network_number, buffer, 4);
+      int client_fd = ntohl(network_number);
+
+      std::cout << "user " << client_fd << ": " << buffer + 4 << std::endl;
+    }
+  }
+
+ private:
+  int sock{};
+  char buffer[kBufferSize]{};
+};
 
 int main() {
-  struct sockaddr_in serv_addr;
-  char buffer[kBufferSize]{};
-
-  sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (sock < 0) {
-    std::cerr << "Socket creation error: " << strerror(errno) << std::endl;
-    return -1;
+  Client client{};
+  try {
+    client.connectServer();
+    client.loop();
+  } catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
   }
-
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(kPort);
-
-  if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
-    std::cerr << "Invalid address / Address not supported" << std::endl;
-    close(sock);
-    return -1;
-  }
-
-  if (connect(sock, reinterpret_cast<struct sockaddr *>(&serv_addr),
-              sizeof(serv_addr)) < 0) {
-    std::cerr << "Connection failed: " << strerror(errno) << std::endl;
-    close(sock);
-    return -1;
-  }
-
-  std::cout << "Connected to server" << std::endl;
-
-  std::thread send_thread(SendThread);
-  std::thread recv_thread(RecvThread);
-
-  send_thread.join();
-  recv_thread.join();
-
-  close(sock);
   return 0;
 }
