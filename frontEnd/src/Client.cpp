@@ -40,9 +40,15 @@ void RecvThread() {
       break;
     }
     buffer[valread] = '\0';
-    std::cout << "other: " << buffer << std::endl;
+
+    uint32_t network_number;
+    memcpy(&network_number, buffer, 4);
+    int client_fd = ntohl(network_number);
+
+    std::cout << "user " << client_fd << ": " << buffer + 4 << std::endl;
   }
 }
+
 int main() {
   struct sockaddr_in serv_addr;
   char buffer[kBufferSize]{};

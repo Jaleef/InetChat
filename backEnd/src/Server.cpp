@@ -174,12 +174,16 @@ int main(int argc, char* argv[]) {
         } else {
           // 转发消息给所有客户端
           buffer[valread] = '\0';
-          std::cout << "Received message from client "
-                    << client_fd << ": " << buffer << std::endl;
+          // std::cout << "Received message from client "
+          //           << client_fd << ": " << buffer << std::endl;
+          char message[kBufferSize];
+          uint32_t network_number = htonl(client_fd);
+          memcpy(message, &network_number, 4);
+          memcpy(message + 4, buffer, valread);
 
           for (int fd : client_fds) {
             if (fd != client_fd) {
-              send(fd, buffer, valread, 0);
+              send(fd, message, valread + 4, 0);
             }
           }
         }
