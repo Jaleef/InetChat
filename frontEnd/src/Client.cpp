@@ -80,7 +80,6 @@ class Client {
         } else {
           std::cerr << "Recv failed: " << strerror(errno) << std::endl;
         }
-        break;
       }
       buffer[valread] = '\0';
 
