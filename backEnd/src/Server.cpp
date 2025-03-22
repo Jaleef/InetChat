@@ -21,6 +21,9 @@ class Server {
   ~Server() {
     close(server_fd);
     close(epoll_fd);
+    for (auto fd : client_fds) {
+      close(fd);
+    }
   }
 
   void createServerSocket() {
@@ -95,7 +98,6 @@ class Server {
     }
 
     std::vector<struct epoll_event> events(kMaxEvents);
-    std::vector<int> client_fds;
 
     while (true) {
       // epoll_wait()等待epoll实例中文件描述符事件
@@ -177,6 +179,7 @@ class Server {
   int server_fd{-1};
   int epoll_fd{-1};
   char buffer[kBufferSize]{};
+  std::vector<int> client_fds{};
 };
 
 void SetNonBlocking(int fd) {
