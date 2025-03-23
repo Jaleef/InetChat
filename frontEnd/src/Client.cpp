@@ -15,7 +15,7 @@
 
 constexpr int kBufferSize = 1024;
 constexpr int kPort = 8080;
-constexpr char* kServerIp = "127.0.0.1";
+constexpr char* kServerIp = "8.147.220.117";
 constexpr int kMaxRetries = 5;
 constexpr int kCheckInterval = 2;
 
@@ -27,9 +27,7 @@ class Client {
     is_connect_ = true;
     std::signal(SIGINT, signalHandler);
   }
-  ~Client() {
-    close(sock);
-  }
+  ~Client() { close(sock); }
 
   void createClientSocket() {
     struct sockaddr_in serv_addr;
@@ -81,7 +79,10 @@ class Client {
       }
 
       int sent = send(sock, message.c_str(), message.size(), 0);
-      if (sent < 0) {
+      if (sent > 0) {
+        logger_.saveMessage(message);
+
+      } else if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           std::cout << "Send buffer full, retrying..." << std::endl;
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -90,8 +91,6 @@ class Client {
           std::cerr << "Send failed: " << strerror(errno) << std::endl;
           is_connect_ = false;
         }
-      } else if (sent > 0) {
-        logger_.saveMessage(message);
       }
     }
   }
@@ -135,7 +134,6 @@ class Client {
         is_connect_ = false;
       }
     }
-    std::cout << "(Recv thread exited)" << std::endl;
   }
 
   void connectionCheckThread() {
@@ -191,8 +189,8 @@ class Client {
   int sock{-1};
   char buffer[kBufferSize]{};
   std::atomic<bool> is_connect_{false};
-  MessageLogger logger_;
   std::atomic<bool> exit_flag{false};
+  MessageLogger logger_;
 };
 
 int main() {
