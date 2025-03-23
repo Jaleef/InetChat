@@ -1,11 +1,17 @@
 // copyright 闫佳乐
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <csignal>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <thread>
+
+#include "MessageLogger.cpp"
 
 constexpr int kBufferSize = 1024;
 constexpr int kPort = 8080;
@@ -16,10 +22,14 @@ constexpr int kCheckInterval = 2;
 class Client {
  public:
   Client() {
+    logger_.printMessage();
     createClientSocket();
     is_connect_ = true;
+    std::signal(SIGINT, signalHandler);
   }
-  ~Client() { close(sock); }
+  ~Client() {
+    close(sock);
+  }
 
   void createClientSocket() {
     struct sockaddr_in serv_addr;
@@ -42,7 +52,7 @@ class Client {
       throw std::runtime_error("Connection failed");
     }
 
-    std::cout << "Connected to server" << std::endl;
+    std::cout << "(Connected to server)" << std::endl;
   }
 
   void loop() {
@@ -57,49 +67,91 @@ class Client {
 
   // 发送消息的线程函数
   void sendThread() {
+    // 设置为非阻塞模式
+    setNonBlocking(sock);
+
     while (true) {
       std::string message{};
       std::getline(std::cin, message);
 
-      if (send(sock, message.c_str(), message.size(), 0) < 0) {
-        std::cerr << "Send failed: " << strerror(errno) << std::endl;
+      if (message == "exit") {
+        exit_flag = true;
         is_connect_ = false;
+        break;
+      }
+
+      int sent = send(sock, message.c_str(), message.size(), 0);
+      if (sent < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          std::cout << "Send buffer full, retrying..." << std::endl;
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          continue;
+        } else {
+          std::cerr << "Send failed: " << strerror(errno) << std::endl;
+          is_connect_ = false;
+        }
+      } else if (sent > 0) {
+        logger_.saveMessage(message);
       }
     }
   }
 
   // 接收消息的线程函数
   void recvThread() {
+    // 设置为非阻塞模式
+    setNonBlocking(sock);
+
     char buffer[kBufferSize]{};
     while (true) {
-      ssize_t valread = recv(sock, buffer, kBufferSize - 1, 0);
-      if (valread <= 0) {
-        if (valread == 0) {
-          std::cout << "Server closed the connection." << std::endl;
-          is_connect_ = false;
-        } else {
-          std::cerr << "Recv failed: " << strerror(errno) << std::endl;
-        }
+      if (exit_flag) {
+        break;
       }
-      buffer[valread] = '\0';
 
-      uint32_t network_number;
-      memcpy(&network_number, buffer, 4);
-      int client_fd = ntohl(network_number);
+      ssize_t valread = recv(sock, buffer, kBufferSize - 1, 0);
+      if (valread > 0) {
+        buffer[valread] = '\0';
 
-      std::cout << "user " << client_fd << ": " << buffer + 4 << std::endl;
+        uint32_t network_number;
+        memcpy(&network_number, buffer, 4);
+        int user_id = ntohl(network_number);
+
+        std::string message =
+            "          user " + std::to_string(user_id) + ": " + (buffer + 4);
+        std::cout << message << std::endl;
+        logger_.saveMessage(message);
+
+      } else if (valread == 0) {
+        // 服务器关闭连接
+        std::cout << "Server closed the connection." << std::endl;
+        is_connect_ = false;
+
+      } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // 没有数据可读
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      } else {
+        // 接收失败
+        std::cerr << "Recv failed: " << strerror(errno) << std::endl;
+        is_connect_ = false;
+      }
     }
+    std::cout << "(Recv thread exited)" << std::endl;
   }
+
   void connectionCheckThread() {
     int retry_count = 0;
     while (true) {
+      if (exit_flag) {
+        break;
+      }
+
       if (!is_connect_) {
         if (retry_count >= kMaxRetries) {
-          std::cerr << "Max retries reached, exiting..." << std::endl;
+          std::cerr << "(Max retries reached, exiting...)" << std::endl;
           break;
         }
-        std::cout << "Reconnecting (" << retry_count + 1
-                  << "/" << kMaxRetries << ")..."  << std::endl;
+        std::cout << "(Reconnecting (" << retry_count + 1 << "/" << kMaxRetries
+                  << ")...)" << std::endl;
 
         if (sock > 0) {
           close(sock);
@@ -108,7 +160,7 @@ class Client {
           createClientSocket();
           is_connect_ = true;
           retry_count = 0;
-          std::cout << "Reconnected to server" << std::endl;
+          std::cout << "(Reconnected to server)" << std::endl;
         } catch (const std::runtime_error& e) {
           std::cerr << e.what() << std::endl;
           retry_count++;
@@ -116,12 +168,31 @@ class Client {
         }
       }
     }
+    std::cout << "(Connection check thread exited)" << std::endl;
+  }
+
+  static void signalHandler(int signal) {
+    std::cout << "(Signal " << signal << " received)" << std::endl;
+    std::exit(signal);
+  }
+
+  void setNonBlocking(int socket_fd) {
+    int flags = fcntl(socket_fd, F_GETFL, 0);
+    if (flags == -1) {
+      throw std::runtime_error("fcntl failed");
+    }
+
+    if (fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+      throw std::runtime_error("fcntl failed");
+    }
   }
 
  private:
   int sock{-1};
   char buffer[kBufferSize]{};
-  bool is_connect_{false};
+  std::atomic<bool> is_connect_{false};
+  MessageLogger logger_;
+  std::atomic<bool> exit_flag{false};
 };
 
 int main() {

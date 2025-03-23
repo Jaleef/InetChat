@@ -4,6 +4,7 @@ project(frontEnd)
 
 set(SOURCES
   src/Client.cpp
+  src/MessageLogger.cpp
 )
 
 add_executable(frontEnd ${SOURCES})
