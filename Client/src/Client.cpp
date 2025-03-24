@@ -146,6 +146,7 @@ class Client {
       if (!is_connect_) {
         if (retry_count >= kMaxRetries) {
           std::cerr << "(Max retries reached, exiting...)" << std::endl;
+          exit_flag = true;
           break;
         }
         std::cout << "(Reconnecting (" << retry_count + 1 << "/" << kMaxRetries
@@ -166,7 +167,6 @@ class Client {
         }
       }
     }
-    std::cout << "(Connection check thread exited)" << std::endl;
   }
 
   static void signalHandler(int signal) {
