@@ -105,6 +105,10 @@ class Client {
       if (exit_flag) {
         break;
       }
+      if (!is_connect_) {
+        std::this_thread::sleep_for(std::chrono::seconds(kCheckInterval));
+        continue;
+      }
 
       ssize_t valread = recv(sock, buffer, kBufferSize - 1, 0);
       if (valread > 0) {
@@ -159,6 +163,7 @@ class Client {
           createClientSocket();
           is_connect_ = true;
           retry_count = 0;
+          setNonBlocking(sock);
           std::cout << "(Reconnected to server)" << std::endl;
         } catch (const std::runtime_error& e) {
           std::cerr << e.what() << std::endl;
@@ -191,6 +196,8 @@ class Client {
   std::atomic<bool> is_connect_{false};
   std::atomic<bool> exit_flag{false};
   MessageLogger logger_;
+  std::mutex mutex;
+  std::condition_variable cv_;
 };
 
 int main() {
