@@ -9,7 +9,7 @@
 #include <iostream>
 #include <utility>
 
-constexpr size_t kMaxThreads = 2;
+constexpr size_t kMaxThreads = 1;
 constexpr size_t kMaxBufferSize = 1024;
 constexpr char *kFileName = "message.txt";
 
